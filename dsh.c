@@ -227,9 +227,7 @@ bool readprocessinfo(process_t *p, char *cmd) {
 		while (isspace(cmd[cmd_pos])){++cmd_pos;} /* ignore any spaces */
 	}
 	p->argc = argc;
-	printf("%s %d\n","argc: ", argc );
-	//p->argv[p->argc] = NULL;
-	printf("%s\n", p->argv[0]);
+	p->argv[p->argc] = NULL; /* required for exec_() calls */
 	return true;
 }
 
@@ -451,16 +449,17 @@ void eval(job_t *j){
 	if(!j){
 		return;
 	}
+
     signal (SIGINT, SIG_DFL);
     signal (SIGQUIT, SIG_DFL);
     signal (SIGTSTP, SIG_DFL);
    	signal (SIGTTIN, SIG_DFL);
     signal (SIGTTOU, SIG_DFL);
     signal (SIGCHLD, SIG_DFL);
+
 	pid = fork();
 	if(pid==0){
 			process_t * process = j->first_process;
-   			process->argv[process->argc]=NULL;
 		if( (execve(process->argv[0], process->argv, NULL)) <0){
 			perror("execv failed");			
 		}	
