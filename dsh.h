@@ -21,7 +21,7 @@ typedef enum { false, true } bool;
 /* A process is a single process.  */
 typedef struct process {
         struct process *next;       /* next process in pipeline */
-	int argc;		    /* useful for free(ing) argv */
+	    int argc;		    /* useful for free(ing) argv */
         char **argv;                /* for exec; argv[0] is the path of the executable file; argv[1..] is the list of arguments*/
         pid_t pid;                  /* process ID */
         bool completed;             /* true if process has completed */

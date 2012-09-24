@@ -23,7 +23,7 @@ job_t * find_job(pid_t pgid);
 int job_is_stopped(job_t *j);
 int job_is_completed(job_t *j);
 void free_job(job_t *j);
-
+void eval(job_t *j);
 /* Initializing the header for the job list. The active jobs are linked into a list. */
 job_t *first_job = NULL;
 
@@ -227,6 +227,9 @@ bool readprocessinfo(process_t *p, char *cmd) {
 		while (isspace(cmd[cmd_pos])){++cmd_pos;} /* ignore any spaces */
 	}
 	p->argc = argc;
+	printf("%s %d\n","argc: ", argc );
+	//p->argv[p->argc] = NULL;
+	printf("%s\n", p->argv[0]);
 	return true;
 }
 
@@ -436,6 +439,48 @@ void readcmdline(char *msg) {
 char* promptmsg() {
         return  "dsh$ ";
 }
+/*
+Written by: Tyler
+Description: simple function to run single commands
+Does not check if built-in
+*/
+
+void eval(job_t *j){
+	pid_t pid;
+
+	if(!j){
+		return;
+	}
+    signal (SIGINT, SIG_DFL);
+    signal (SIGQUIT, SIG_DFL);
+    signal (SIGTSTP, SIG_DFL);
+   	signal (SIGTTIN, SIG_DFL);
+    signal (SIGTTOU, SIG_DFL);
+    signal (SIGCHLD, SIG_DFL);
+	pid = fork();
+	if(pid==0){
+			process_t * process = j->first_process;
+   			process->argv[process->argc]=NULL;
+		if( (execve(process->argv[0], process->argv, NULL)) <0){
+			perror("execv failed");			
+		}	
+		exit(1);
+	}
+	else if(pid>0){
+		int status;
+		if( waitpid(pid, &status, 0) <0){
+			perror("waitpid()");
+       		exit(EXIT_FAILURE);
+		}
+			
+	} else{
+		/* The fork failed.  */
+        perror ("fork");
+        exit (1);
+	}
+	
+	return;    
+}
 
 int main() {
 
@@ -452,7 +497,11 @@ int main() {
 		if (feof(stdin)) { /* End of file (ctrl-d) */
                         exit(0);
                 }
-	
+		
 		/* Your code goes here */
+        eval(first_job);
+        free_job(first_job);
+  
+
 	}
 }
