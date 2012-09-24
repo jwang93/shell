@@ -183,9 +183,9 @@ bool init_job(job_t *j) {
 	j->first_process = NULL;
 	j->pgid = -1; 	/* -1 indicates new spawn new job*/
 	j->notified = false;
-	j->stdin = STDIN_FILENO; 	/* 0 */
-	j->stdout = STDOUT_FILENO;	/* 1 */ 
-	j->stderr = STDERR_FILENO;	/* 2 */
+	j->mystdin = STDIN_FILENO; 	/* 0 */
+	j->mystdout = STDOUT_FILENO;	/* 1 */ 
+	j->mystderr = STDERR_FILENO;	/* 2 */
 	j->bg = false;
 	j->ifile = NULL;
 	j->ofile = NULL;
@@ -251,9 +251,9 @@ void print_job() {
 		}
 		if(j->bg) fprintf(stdout, "Background job\n");	
 		else fprintf(stdout, "Foreground job\n");	
-		if(j->stdin == INPUT_FD)
+		if(j->mystdin == INPUT_FD)
 			fprintf(stdout, "Input file name: %s\n", j->ifile);
-		if(j->stdout == OUTPUT_FD)
+		if(j->mystdout == OUTPUT_FD)
 			fprintf(stdout, "Outpt file name: %s\n", j->ofile);
 	}
 }
@@ -332,7 +332,7 @@ void readcmdline(char *msg) {
 					current_job->ifile[iofile_seek++] = cmdline[cmdline_pos++];
 				}
 				current_job->ifile[iofile_seek] = '\0';
-				current_job->stdin = INPUT_FD;
+				current_job->mystdin = INPUT_FD;
 				while(isspace(cmdline[cmdline_pos])) {
 					if(cmdline[cmdline_pos] == '\n')
 						break;
@@ -354,7 +354,7 @@ void readcmdline(char *msg) {
 					current_job->ofile[iofile_seek++] = cmdline[cmdline_pos++];
 				}
 				current_job->ofile[iofile_seek] = '\0';
-				current_job->stdout = OUTPUT_FD;
+				current_job->mystdout = OUTPUT_FD;
 				while(isspace(cmdline[cmdline_pos])) {
 					if(cmdline[cmdline_pos] == '\n')
 						break;

@@ -39,11 +39,14 @@ typedef struct job {
         process_t *first_process;   /* list of processes in this job */
         pid_t pgid;                 /* process group ID */
         bool notified;              /* true if user told about stopped job */
-        struct termios tmodes;      /* saved terminal modes */
-        int stdin, stdout, stderr;  /* standard i/o channels */
-        bool bg;                    /* true when & is issued on the command line */
+         bool bg;                    /* true when & is issued on the command line */
         char *ifile;                /* stores input file name when < is issued */
         char *ofile;                /* stores output file name when > is issued */
+        //struct termios tmodes;      /* saved terminal modes */
+        int mystdin;
+        int mystdout;
+        int mystderr;  /* standard i/o channels */
+       
 } job_t;
 
 #ifdef NDEBUG
