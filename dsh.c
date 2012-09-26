@@ -18,16 +18,17 @@ int shell_terminal;
 int shell_is_interactive;
 
 void init_shell();
-pid_t spawn_job(pid_t pgrp, bool fg);
+void spawn_job(job_t *j, bool fg);
 job_t * find_job(pid_t pgid);
 int job_is_stopped(job_t *j);
 int job_is_completed(job_t *j);
-void free_job(job_t *j);
+bool free_job(job_t *j);
+void eval(job_t *j);
 
 /* Initializing the header for the job list. The active jobs are linked into a list. */
 job_t *first_job = NULL;
 
-/* Find the active job with the indicated pgid.  */
+/* Find the job with the indicated pgid.  */
 job_t *find_job(pid_t pgid) {
 
 	job_t *j;
@@ -57,7 +58,7 @@ int job_is_completed(job_t *j) {
 	return 1;
 }
 
-/* Find the last active job.  */
+/* Find the last job.  */
 job_t *find_last_job() {
 
 	job_t *j = first_job;
@@ -77,9 +78,9 @@ process_t *find_last_process(job_t *j) {
 	return p;
 }
 
-void free_job(job_t *j) {
+bool free_job(job_t *j) {
 	if(!j)
-		return;
+		return true;
 	free(j->commandinfo);
 	free(j->ifile);
 	free(j->ofile);
@@ -90,6 +91,7 @@ void free_job(job_t *j) {
 			free(p->argv[i]);
 	}
 	free(j);
+	return true;
 }
 
 /* Make sure the shell is running interactively as the foreground job
@@ -109,12 +111,13 @@ void init_shell() {
       			kill(- shell_pgid, SIGTTIN);
 
     		/* Ignore interactive and job-control signals.  */
-		signal(SIGINT, SIG_IGN);
-		signal(SIGQUIT, SIG_IGN);
-		signal(SIGTSTP, SIG_IGN);
-		signal(SIGTTIN, SIG_IGN);
+                /* If tcsetpgrp() is called by a member of a background process 
+                 * group in its session, and the calling process is not blocking or
+                 * ignoring  SIGTTOU,  a SIGTTOU signal is sent to all members of 
+                 * this background process group.
+                 */
+
 		signal(SIGTTOU, SIG_IGN);
-		signal(SIGCHLD, SIG_IGN);
 
 		/* Put ourselves in our own process group.  */
 		shell_pgid = getpid();
@@ -131,49 +134,87 @@ void init_shell() {
 	}
 }
 
+/* Sends SIGCONT signal to wake up the blocked job */
+void continue_job(job_t *j) {
+	if(kill(-j->pgid, SIGCONT) < 0)
+		perror("kill(SIGCONT)");
+}
+
+
 /* Spawning a process with job control. fg is true if the 
  * newly-created process is to be placed in the foreground. 
  * (This implicitly puts the calling process in the background, 
- * so watch out for tty I/O after doing this.) pgrp is -1 to 
+ * so watch out for tty I/O after doing this.) pgid is -1 to 
  * create a new job, in which case the returned pid is also the 
- * pgrp of the new job.  Else pgrp specifies an existing job's 
- * pgrp: this feature is used to start the second or 
+ * pgid of the new job.  Else pgid specifies an existing job's 
+ * pgid: this feature is used to start the second or 
  * subsequent processes in a pipeline.
  * */
 
-pid_t spawn_job(pid_t pgrp, bool fg) {
+void spawn_job(job_t *j, bool fg) {
 
-      int ctty = -1;
-      pid_t pid;
+	pid_t pid;
+	process_t *p;
 
-      switch (pid = fork()) {
+	/* Check for input/output redirection; If present, set the IO descriptors 
+	 * to the appropriate files given by the user 
+	 */
 
-              case -1: /* fork failure */
-                      return pid;
 
-              case 0: /* child */
+	/* A job can contain a pipeline; Loop through process and set up pipes accordingly */
 
-                     /* establish a new process group, and put the child in
-                      * foreground if requested
-                      */
-                      if (pgrp < 0)
-                              pgrp = getpid();
 
-                      if (!setpgid(0,pgrp))
-                              if(fg) // If success and fg is set
-                                   tcsetpgrp(ctty, pgrp); // assign the terminal
+	/* For each command (process), fork to create a new process context, 
+	 * set the process group, and execute the command 
+         */ 	
 
-                      return 0;
+	/* The code below provides an example on how to set the process context for each command */
 
-              default: /* parent */
-                      /* establish child process group here to avoid race
- 			* conditions. */
-                      if (pgrp < 0)
-                        pgrp = pid;
-                      setpgid(pid, pgrp);
+	for(p = j->first_process; p; p = p->next) {
 
-                      return pid;
-      }
+		switch (pid = fork()) {
+
+		   case -1: /* fork failure */
+			perror("fork");
+			exit(EXIT_FAILURE);
+
+		   case 0: /* child */
+
+		       /* establish a new process group, and put the child in
+			* foreground if requested
+			*/
+			if (j->pgid < 0) /* init sets -ve to a new process */
+				j->pgid = getpid();
+			p->pid = 0;
+
+			if (!setpgid(0,j->pgid))
+				if(fg) // If success and fg is set
+				     tcsetpgrp(shell_terminal, j->pgid); // assign the terminal
+
+			/* Set the handling for job control signals back to the default. */
+			signal(SIGTTOU, SIG_DFL);
+
+
+			/* execute the command through exec_ call */
+
+		   default: /* parent */
+			/* establish child process group here to avoid race
+			* conditions. */
+			p->pid = pid;
+			if (j->pgid <= 0)
+				j->pgid = pid;
+			setpgid(pid, j->pgid);
+		}
+
+		/* Reset file IOs if necessary */
+
+		if(fg){
+			/* Wait for the job to complete */
+		}
+		else {
+			/* Background job */
+		}
+	}
 }
 
 bool init_job(job_t *j) {
@@ -200,15 +241,16 @@ bool init_process(process_t *p) {
 	p->argc = 0;
 	p->next = NULL;
 	
-	if(!(p->argv = (char **)malloc(sizeof(char *))))
-		return false;
+        if(!(p->argv = (char **)calloc(MAX_ARGS,sizeof(char *))))
+                return false;
+
 	return true;
 }
 
 bool readprocessinfo(process_t *p, char *cmd) {
 
 	int cmd_pos = 0; /*iterator for command; */
-	int args_pos = 0; /* iterator for a arguments*/
+	int args_pos = 0; /* iterator for arguments*/
 
 	int argc = 0;
 	
@@ -217,7 +259,7 @@ bool readprocessinfo(process_t *p, char *cmd) {
 		return true;
 	
 	while(cmd[cmd_pos] != '\0'){
-		if(!(p->argv[argc] = (char *)malloc(sizeof(char)*MAX_LEN_CMDLINE)))
+		if(!(p->argv[argc] = (char *)calloc(MAX_LEN_CMDLINE, sizeof(char))))
 			return false;
 		while(cmd[cmd_pos] != '\0' && !isspace(cmd[cmd_pos])) 
 			p->argv[argc][args_pos++] = cmd[cmd_pos++];
@@ -226,14 +268,14 @@ bool readprocessinfo(process_t *p, char *cmd) {
 		++argc;
 		while (isspace(cmd[cmd_pos])){++cmd_pos;} /* ignore any spaces */
 	}
+	p->argv[argc] = NULL; /* required for exec_() calls */
 	p->argc = argc;
 	return true;
 }
 
-void invokefree(job_t *j, char *msg){
+bool invokefree(job_t *j, char *msg){
 	fprintf(stderr, "%s\n",msg);
-	if(j) free_job(j);
-	return;
+	return free_job(j);
 }
 
 /* Prints the active jobs in the list.  */
@@ -268,15 +310,15 @@ void print_job() {
  * The parser supports these symbols: <, >, |, &, ;
  */
 
-void readcmdline(char *msg) {
+bool readcmdline(char *msg) {
 
 	fprintf(stdout, "%s", msg);
 
-	char *cmdline = (char *)malloc(sizeof(char)*MAX_LEN_CMDLINE);
+	char *cmdline = (char *)calloc(MAX_LEN_CMDLINE, sizeof(char));
 	if(!cmdline)
-		return invokefree(NULL,"malloc: no space");
+		return invokefree(NULL, "malloc: no space");
 	fgets(cmdline, MAX_LEN_CMDLINE, stdin);
-	
+
 	/* sequence is true only when the command line contains ; */
 	bool sequence = false;
 	/* seq_pos is used for storing the command line before ; */
@@ -291,17 +333,19 @@ void readcmdline(char *msg) {
 		int iofile_seek = 0; /*iofile_seek for file */
 		bool valid_input = true; /* check for valid input */
 		bool end_of_input = false; /* check for end of input */
-		
-		char *cmd = (char *)malloc(sizeof(char)*MAX_LEN_CMDLINE);
-		if(!cmd)
-			return invokefree(NULL, "malloc: no space");
 
-		if(cmdline[cmdline_pos] == '\n' && cmdline[cmdline_pos] == '\0')
-			return;
+		/* cmdline is NOOP, i.e., just return with spaces */
+		while (isspace(cmdline[cmdline_pos])){++cmdline_pos;} /* ignore any spaces */
+		if(cmdline[cmdline_pos] == '\n' || cmdline[cmdline_pos] == '\0' || feof(stdin))
+			return false;
+
+		char *cmd = (char *)calloc(MAX_LEN_CMDLINE, sizeof(char));
+		if(!cmd)
+			return invokefree(NULL,"malloc: no space");
 
 		job_t *newjob = (job_t *)malloc(sizeof(job_t));
 		if(!newjob)
-			return invokefree(NULL, "malloc: no space");
+			return invokefree(NULL,"malloc: no space");
 
 		if(!first_job)
 			first_job = current_job = newjob;
@@ -311,7 +355,7 @@ void readcmdline(char *msg) {
 		}
 
 		if(!init_job(current_job))
-			return invokefree(current_job, "init_job: malloc failed");
+			return invokefree(current_job,"init_job: malloc failed");
 
 		process_t *current_process = find_last_process(current_job);
 
@@ -320,15 +364,15 @@ void readcmdline(char *msg) {
 			switch (cmdline[cmdline_pos]) {
 
 			    case '<': /* input redirection */
-				current_job->ifile = (char *) malloc(sizeof(char)*MAX_LEN_FILENAME);
+				current_job->ifile = (char *) calloc(MAX_LEN_FILENAME, sizeof(char));
 				if(!current_job->ifile)
-					return invokefree(current_job, "malloc: no space");
-				++cmdline_pos; 
+					return invokefree(current_job,"malloc: no space");
+				++cmdline_pos;
 				while (isspace(cmdline[cmdline_pos])){++cmdline_pos;} /* ignore any spaces */
 				iofile_seek = 0;
 				while(cmdline[cmdline_pos] != '\0' && !isspace(cmdline[cmdline_pos])){
 					if(MAX_LEN_FILENAME == iofile_seek)
-						return invokefree(current_job, "input redirection: file length exceeded");
+						return invokefree(current_job,"input redirection: file length exceeded");
 					current_job->ifile[iofile_seek++] = cmdline[cmdline_pos++];
 				}
 				current_job->ifile[iofile_seek] = '\0';
@@ -342,15 +386,15 @@ void readcmdline(char *msg) {
 				break;
 			
 			    case '>': /* output redirection */
-				current_job->ofile = (char *) malloc(sizeof(char)*MAX_LEN_FILENAME);
+				current_job->ofile = (char *) calloc(MAX_LEN_FILENAME, sizeof(char));
 				if(!current_job->ofile)
-					return invokefree(current_job, "malloc: no space");
-				++cmdline_pos; 
+					return invokefree(current_job,"malloc: no space");
+				++cmdline_pos;
 				while (isspace(cmdline[cmdline_pos])){++cmdline_pos;} /* ignore any spaces */
 				iofile_seek = 0;
 				while(cmdline[cmdline_pos] != '\0' && !isspace(cmdline[cmdline_pos])){
 					if(MAX_LEN_FILENAME == iofile_seek) 
-						return invokefree(current_job, "input redirection: file length exceeded");
+						return invokefree(current_job,"input redirection: file length exceeded");
 					current_job->ofile[iofile_seek++] = cmdline[cmdline_pos++];
 				}
 				current_job->ofile[iofile_seek] = '\0';
@@ -367,9 +411,9 @@ void readcmdline(char *msg) {
 				cmd[cmd_pos] = '\0';
 				process_t *newprocess = (process_t *)malloc(sizeof(process_t));
 				if(!newprocess)
-					return invokefree(current_job, "malloc: no space");
+					return invokefree(current_job,"malloc: no space");
 				if(!init_process(newprocess))
-					return invokefree(current_job, "init_process: failed");
+					return invokefree(current_job,"init_process: failed");
 				if(!current_job->first_process)
 					current_process = current_job->first_process = newprocess;
 				else {
@@ -377,7 +421,7 @@ void readcmdline(char *msg) {
 					current_process = current_process->next;
 				}
 				if(!readprocessinfo(current_process, cmd))
-					return invokefree(current_job, "parse cmd: error");
+					return invokefree(current_job,"parse cmd: error");
 				++cmdline_pos;
 				cmd_pos = 0; /*Reinitialze for new cmd */
 				valid_input = true;	
@@ -393,15 +437,19 @@ void readcmdline(char *msg) {
 
 			   case ';': /* sequence of jobs*/
 				sequence = true;
-				strncpy(current_job->commandinfo,cmdline+seq_pos,cmdline_pos);
+				strncpy(current_job->commandinfo,cmdline+seq_pos,cmdline_pos-seq_pos);
 				seq_pos = cmdline_pos + 1;
 				break;	
 
+			   case '#': /* comment */
+				end_of_input = true;
+				break;
+
 			   default:
 				if(!valid_input)
-					return invokefree(current_job, "reading cmdline: could not fathom input");
+					return invokefree(current_job,"reading cmdline: could not fathom input");
 				if(cmd_pos == MAX_LEN_CMDLINE-1)
-					return invokefree(current_job, "reading cmdline: length exceeds the max limit");
+					return invokefree(current_job,"reading cmdline: length exceeds the max limit");
 				cmd[cmd_pos++] = cmdline[cmdline_pos++];
 				break;
 			}
@@ -411,9 +459,9 @@ void readcmdline(char *msg) {
 		cmd[cmd_pos] = '\0';
 		process_t *newprocess = (process_t *)malloc(sizeof(process_t));
 		if(!newprocess)
-			return invokefree(current_job, "malloc: no space");
+			return invokefree(current_job,"malloc: no space");
 		if(!init_process(newprocess))
-			return invokefree(current_job, "init_process: failed");
+			return invokefree(current_job,"init_process: failed");
 
 		if(!current_job->first_process)
 			current_process = current_job->first_process = newprocess;
@@ -422,37 +470,87 @@ void readcmdline(char *msg) {
 			current_process = current_process->next;
 		}
 		if(!readprocessinfo(current_process, cmd))
-			return invokefree(current_job, "read process info: error");
-		strncpy(current_job->commandinfo,cmdline+seq_pos,cmdline_pos);
+			return invokefree(current_job,"read process info: error");
 		if(!sequence) {
+			strncpy(current_job->commandinfo,cmdline+seq_pos,cmdline_pos-seq_pos);
 			break;
 		}
 		sequence = false;
 		++cmdline_pos;
 	}
+	return true;
 }
 
 /* Build prompt messaage; Change this to include process ID (pid)*/
 char* promptmsg() {
         return  "dsh$ ";
 }
+void eval(job_t *j){
+	pid_t pid;
 
+	if(!j){
+		return;
+	}
+
+    signal (SIGINT, SIG_DFL);
+    signal (SIGQUIT, SIG_DFL);
+    signal (SIGTSTP, SIG_DFL);
+   	signal (SIGTTIN, SIG_DFL);
+    signal (SIGTTOU, SIG_DFL);
+    signal (SIGCHLD, SIG_DFL);
+
+	pid = fork();
+	if(pid==0){
+			process_t * process = j->first_process;
+			int i;
+			for(i=0; i<process->argc;i++){
+				printf("%s\n", process->argv[i]);
+			}
+		if( (execve(process->argv[0], process->argv, NULL)) <0){
+			perror("execv failed");			
+		}	
+		exit(1);
+	}
+	else if(pid>0){
+		int status;
+		if( waitpid(pid, &status, 0) <0){
+			perror("waitpid()");
+       		exit(EXIT_FAILURE);
+		}
+			
+	} else{
+		/* The fork failed.  */
+        perror ("fork");
+        exit (1);
+	}
+	
+	return;    
+}
 int main() {
 
 	init_shell();
 
 	while(1) {
-		readcmdline(promptmsg());
-		if(first_job == NULL) {
-			fprintf(stderr, "No input\n");
-			continue;
+		if(!readcmdline(promptmsg())) {
+			if (feof(stdin)) { /* End of file (ctrl-d) */
+				fflush(stdout);
+				printf("\n");
+				exit(EXIT_SUCCESS);
+                	}
+			continue; /* NOOP; user entered return or spaces with return */
 		}
-		/* for debugging purposes */
+		/* Only for debugging purposes and to show parser output */
 		print_job();
-		if (feof(stdin)) { /* End of file (ctrl-d) */
-                        exit(0);
-                }
-	
+
 		/* Your code goes here */
+		eval(first_job);
+        free_job(first_job);
+		/* You need to loop through jobs list since a command line can contain ;*/
+		/* Check for built-in commands */
+		/* If not built-in */
+			/* If job j runs in foreground */
+			/* spawn_job(j,true) */
+			/* else */
+			/* spawn_job(j,false) */
 	}
 }
