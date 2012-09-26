@@ -7,7 +7,9 @@
 #define MAX_LEN_FILENAME 80
 
 /*Max length of the command line */
-#define MAX_LEN_CMDLINE	120
+#define MAX_LEN_CMDLINE 120
+
+#define MAX_ARGS 20 /* Maximum number of arguments to any command */
 
 /*file descriptors for input and output; the range of fds are from 0 to 1023;
  * 0, 1, 2 are reserved for stdin, stdout, stderr */
@@ -21,7 +23,7 @@ typedef enum { false, true } bool;
 /* A process is a single process.  */
 typedef struct process {
         struct process *next;       /* next process in pipeline */
-	int argc;		    /* useful for free(ing) argv */
+    int argc;           /* useful for free(ing) argv */
         char **argv;                /* for exec; argv[0] is the path of the executable file; argv[1..] is the list of arguments*/
         pid_t pid;                  /* process ID */
         bool completed;             /* true if process has completed */
@@ -34,19 +36,16 @@ typedef struct process {
  * Each process group has exactly one process that is its leader.
  */
 typedef struct job {
-        struct job *next;           /* next active job */
+        struct job *next;           /* next job */
         char *commandinfo;          /* entire command line input given by the user; useful for logging and message display*/
         process_t *first_process;   /* list of processes in this job */
         pid_t pgid;                 /* process group ID */
-        bool notified;              /* true if user told about stopped job */
-         bool bg;                    /* true when & is issued on the command line */
+        bool notified;              /* true if user was informed about stopped job */
+        struct termios tmodes;      /* saved terminal modes */
+        int mystdin, mystdout, mystderr;  /* standard i/o channels */
+        bool bg;                    /* true when & is issued on the command line */
         char *ifile;                /* stores input file name when < is issued */
         char *ofile;                /* stores output file name when > is issued */
-        //struct termios tmodes;      /* saved terminal modes */
-        int mystdin;
-        int mystdout;
-        int mystderr;  /* standard i/o channels */
-       
 } job_t;
 
 #ifdef NDEBUG
