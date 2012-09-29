@@ -485,6 +485,7 @@ bool readcmdline(char *msg) {
 char* promptmsg() {
         return  "dsh$ ";
 }
+
 void eval(job_t *j){
 	pid_t pid;
 
@@ -513,10 +514,12 @@ void eval(job_t *j){
 	}
 	else if(pid>0){
 		int status;
+		if(j->bg==0){
 		if( waitpid(pid, &status, 0) <0){
 			perror("waitpid()");
        		exit(EXIT_FAILURE);
 		}
+	}
 			
 	} else{
 		/* The fork failed.  */
