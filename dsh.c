@@ -40,8 +40,7 @@ job_t *find_job(pid_t pgid) {
 	    		return j;
 	return NULL;
 }
-     int
-     mark_process_status (pid_t pid, int status)
+     int mark_process_status (pid_t pid, int status)
      {
        job_t *j;
        process_t *p;
@@ -54,14 +53,14 @@ job_t *find_job(pid_t pgid) {
                if (p->pid == pid)
                  {
                    p->status = status;
-                   if (WIFSTOPPED (status))
+                   if (WIFSTOPPED(status))
                      p->stopped = 1;
                    else
                      {
                        p->completed = 1;
-                       if (WIFSIGNALED (status))
+                       if (WIFSIGNALED(status))
                          fprintf (stderr, "%d: Terminated by signal %d.\n",
-                                  (int) pid, WTERMSIG (p->status));
+                                  (int) pid, WTERMSIG(p->status));
                      }
                    return 0;
                   }
@@ -112,10 +111,9 @@ void wait_for_job(job_t *j)
    pid_t pid;
  
    do
-     pid = waitpid (WAIT_ANY, &status, WUNTRACED);
-   while (!mark_process_status (pid, status)
-          && !job_is_stopped (j)
-          && !job_is_completed (j));
+     pid = waitpid(WAIT_ANY, &status, WUNTRACED);
+   while (!mark_process_status(pid, status)&& !job_is_stopped(j)
+          && !job_is_completed(j));
  }
 /* Find the last process in the pipeline (job).  */
 process_t *find_last_process(job_t *j) {
@@ -227,14 +225,14 @@ void spawn_job(job_t *j, bool fg) {
         {
            if (pipe (mypipe) < 0)
              {
-               perror ("pipe");
+               perror("pipe");
                exit (1);
              }
-           outfile = mypipe[1];	
-        }
-       else
+           outfile = mypipe[1];	//mypide[1] is for writing, [0] for reading
+        } 
+       else 
          outfile = j->mystdout;
-
+     	
 		switch (pid = fork()) {
 
 		   case -1: /* fork failure */
@@ -291,10 +289,10 @@ void spawn_job(job_t *j, bool fg) {
         	close (infile);
        	if (outfile != j->mystdout)
         	close (outfile);
-
-       	infile = mypipe[0];
-       	wait_for_job (j);
+		infile = mypipe[0];
+		
 		if(fg){
+			wait_for_job (j);
 			/* Wait for the job to complete */
 			put_job_in_foreground (j, 0);
 		}
@@ -685,8 +683,9 @@ int main() {
 			} 
 			/*If not built-in*/
 			spawn_job(next_job, !bg);
-
+			job_t * old = next_job;
 			next_job=next_job->next;
+			free_job(old);
 		}
 		/* You need to loop through jobs list since a command line can contain ;*/
 		/* Check for built-in commands */
