@@ -6,7 +6,7 @@
 #include <errno.h> /* for errno */
 #include <sys/wait.h> /* for WAIT_ANY */
 #include <string.h>
-
+#include <fcntl.h>
 #include "dsh.h"
 
 int isspace(int c);
@@ -232,7 +232,7 @@ void spawn_job(job_t *j, bool fg) {
         } 
        else 
          outfile = j->mystdout;
-     	
+     	printf("outfile: %d\n", outfile);
 		switch (pid = fork()) {
 
 		   case -1: /* fork failure */
@@ -262,6 +262,7 @@ void spawn_job(job_t *j, bool fg) {
 			}
        		if (outfile != STDOUT_FILENO)
          	{
+         		printf("%s\n", "inside out");
            		dup2 (outfile, STDOUT_FILENO);
            		close (outfile);
 	         }
