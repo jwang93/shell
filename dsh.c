@@ -6,7 +6,7 @@
 #include <errno.h> /* for errno */
 #include <sys/wait.h> /* for WAIT_ANY */
 #include <string.h>
-
+#include <fcntl.h>
 #include "dsh.h"
 
 int isspace(int c);
@@ -24,6 +24,9 @@ int job_is_stopped(job_t *j);
 int job_is_completed(job_t *j);
 bool free_job(job_t *j);
 void eval(job_t *j);
+void wait_for_job(job_t *j);
+void put_job_in_foreground (job_t *j, int cont);
+void put_job_in_background (job_t *j, int cont);
 
 /* Initializing the header for the job list. The active jobs are linked into a list. */
 job_t *first_job = NULL;
@@ -37,6 +40,44 @@ job_t *find_job(pid_t pgid) {
 	    		return j;
 	return NULL;
 }
+
+//we added this function **CWA**
+ int mark_process_status (pid_t pid, int status)
+ {
+   job_t *j;
+   process_t *p;
+ 
+   if (pid > 0)
+     {
+       /* Update the record for the process.  */
+       for (j = first_job; j; j = j->next)
+         for (p = j->first_process; p; p = p->next)
+           if (p->pid == pid)
+             {
+               p->status = status;
+               if (WIFSTOPPED(status))
+                 p->stopped = 1;
+               else
+                 {
+                   p->completed = 1;
+                   if (WIFSIGNALED(status))
+                     fprintf (stderr, "%d: Terminated by signal %d.\n",
+                              (int) pid, WTERMSIG(p->status));
+                 }
+               return 0;
+              }
+       fprintf (stderr, "No child process %d.\n", pid);
+       return -1;
+     }
+   else if (pid == 0 || errno == ECHILD)
+     /* No processes ready to report.  */
+     return -1;
+   else {
+     /* Other weird errors.  */
+     perror ("waitpid");
+     return -1;
+   }
+ }
 
 /* Return true if all processes in the job have stopped or completed.  */
 int job_is_stopped(job_t *j) {
@@ -67,6 +108,19 @@ job_t *find_last_job() {
 		j = j->next;
 	return j;
 }
+
+//we added this function **CWA**
+void wait_for_job(job_t *j)
+ {
+   int status;
+   pid_t pid;
+ 
+   do
+     pid = waitpid(WAIT_ANY, &status, WUNTRACED);
+   while (!mark_process_status(pid, status)&& !job_is_stopped(j)
+          && !job_is_completed(j));
+ }
+
 
 /* Find the last process in the pipeline (job).  */
 process_t *find_last_process(job_t *j) {
@@ -155,7 +209,9 @@ void spawn_job(job_t *j, bool fg) {
 
 	pid_t pid;
 	process_t *p;
+	int mypipe[2], infile, outfile; //**CWA**
 
+	infile = j->mystdin;
 	/* Check for input/output redirection; If present, set the IO descriptors 
 	 * to the appropriate files given by the user 
 	 */
@@ -171,6 +227,18 @@ void spawn_job(job_t *j, bool fg) {
 	/* The code below provides an example on how to set the process context for each command */
 
 	for(p = j->first_process; p; p = p->next) {
+		
+		//Code we added to set up the pipes **CWA**
+		/* Set up pipes, if necessary.  */
+        if (p->next) { //if there is a next process, we set the outfile to be for writing 
+           if (pipe (mypipe) < 0) {
+               perror("pipe");
+               exit (1);
+           }
+           outfile = mypipe[1];	//mypipe[1] is for writing, [0] for reading
+        } 
+        else outfile = j->mystdout; //otherwise, outfile = job's stdout 
+		
 
 		switch (pid = fork()) {
 
@@ -191,10 +259,26 @@ void spawn_job(job_t *j, bool fg) {
 				if(fg) // If success and fg is set
 				     tcsetpgrp(shell_terminal, j->pgid); // assign the terminal
 
-			/* Set the handling for job control signals back to the default. */
+			/* Set the handling for job control signals back to the default. **CWA** */
+			
 			signal(SIGTTOU, SIG_DFL);
 
-
+			//STDIN_FILENO, STDOUT..., STDERR = 0, 1, 2 respectively 
+			if(infile != STDIN_FILENO) { //means the infile has been changed 
+				dup2(infile, STDIN_FILENO);
+				close(infile);
+			}
+       		if (outfile != STDOUT_FILENO) { //outfile has been changed 
+           		dup2 (outfile, STDOUT_FILENO);
+           		close (outfile);
+	         }
+	        if (j->mystderr != STDERR_FILENO) { //error file has been changed 
+	           dup2 (j->mystderr, STDERR_FILENO);
+	           close (j->mystderr);
+	        }
+     		execvp (p->argv[0], p->argv);
+       		perror ("execvp");
+       		exit (1);
 			/* execute the command through exec_ call */
 
 		   default: /* parent */
@@ -207,14 +291,21 @@ void spawn_job(job_t *j, bool fg) {
 		}
 
 		/* Reset file IOs if necessary */
+       	if (infile != j->mystdin) close (infile); //will delete the file descriptor so it can be reused
+       	if (outfile != j->mystdout) close (outfile);
+		infile = mypipe[0]; 
 
+
+	}
 		if(fg){
+			wait_for_job (j);
 			/* Wait for the job to complete */
+			put_job_in_foreground (j, 0);
 		}
 		else {
 			/* Background job */
-		}
-	}
+			put_job_in_background (j, 0);
+		}	
 }
 
 bool init_job(job_t *j) {
@@ -240,7 +331,7 @@ bool init_process(process_t *p) {
 	p->status = -1; /* set by waitpid */
 	p->argc = 0;
 	p->next = NULL;
-	
+
         if(!(p->argv = (char **)calloc(MAX_ARGS,sizeof(char *))))
                 return false;
 
@@ -253,11 +344,11 @@ bool readprocessinfo(process_t *p, char *cmd) {
 	int args_pos = 0; /* iterator for arguments*/
 
 	int argc = 0;
-	
+
 	while (isspace(cmd[cmd_pos])){++cmd_pos;} /* ignore any spaces */
 	if(cmd[cmd_pos] == '\0')
 		return true;
-	
+
 	while(cmd[cmd_pos] != '\0'){
 		if(!(p->argv[argc] = (char *)calloc(MAX_LEN_CMDLINE, sizeof(char))))
 			return false;
@@ -384,7 +475,7 @@ bool readcmdline(char *msg) {
 				}
 				valid_input = false;
 				break;
-			
+
 			    case '>': /* output redirection */
 				current_job->ofile = (char *) calloc(MAX_LEN_FILENAME, sizeof(char));
 				if(!current_job->ofile)
@@ -517,17 +608,17 @@ void eval(job_t *j){
 			perror("waitpid()");
        		exit(EXIT_FAILURE);
 		}
-			
+
 	} else{
 		/* The fork failed.  */
         perror ("fork");
         exit (1);
 	}
-	
+
 	return;    
 }
 
-void put_job_in_foreground (job *j, int cont) {
+void put_job_in_foreground (job_t *j, int cont) {
        /* Put the job into the foreground.  */
        tcsetpgrp (shell_terminal, j->pgid);
      
@@ -539,7 +630,6 @@ void put_job_in_foreground (job *j, int cont) {
              perror ("kill (SIGCONT)");
          }
      
-       /* Wait for it to report.  */
        wait_for_job (j);
      
        /* Put the shell back in the foreground.  */
@@ -553,7 +643,7 @@ void put_job_in_foreground (job *j, int cont) {
 /* Put a job in the background.  If the cont argument is true, send
         the process group a SIGCONT signal to wake it up.  */
      
-void put_job_in_background (job *j, int cont) {
+void put_job_in_background (job_t *j, int cont) {
        /* Send the job a continue signal, if necessary.  */
        if (cont)
          if (kill (-j->pgid, SIGCONT) < 0)
@@ -583,11 +673,25 @@ int main() {
 			continue; /* NOOP; user entered return or spaces with return */
 		}
 		/* Only for debugging purposes and to show parser output */
-		print_job();
+		//print_job();
 
-		/* Your code goes here */
-		eval(first_job);
-        free_job(first_job);
+		job_t * next_job = first_job;
+		while(next_job){
+			bool bg = next_job->bg;
+
+			process_t * p = next_job->first_process;
+
+			char* cmd = p->argv[0];
+			printf("%s\n", cmd);
+			if(strcmp (cmd,"cd") == 0){
+				//printf("%s\n", "found cd");
+			} 
+			/*If not built-in*/
+			spawn_job(next_job, !bg);
+			job_t * old = next_job;
+			next_job=next_job->next;
+
+		}
 		/* You need to loop through jobs list since a command line can contain ;*/
 		/* Check for built-in commands */
 		/* If not built-in */
@@ -597,3 +701,4 @@ int main() {
 			/* spawn_job(j,false) */
 	}
 }
+

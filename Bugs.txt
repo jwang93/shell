@@ -1,0 +1,9 @@
+Getting some QA Action going... 
+
+1. When we finish a job, we need to kill it. For example, 
+	command 1: /bin/ls -l  (works perfectly)
+	command 2: /bin/ls (it will execute command 1 + 2; but otherwise, works perfectly)
+	command 3: /bin/ls | /usr/bin/wc (it will executed command 1, 2, 3)
+
+	I don't think that is what's supposed to happen right? 
+	

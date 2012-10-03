@@ -32,3 +32,9 @@ Things which  may be tricky:
 	I/O redirection: 
 	Pipeline: you know you have a pipeline when argv[1] exists
 		you take the output from argv[0] and put it into stdin for argv[1]
+
+
+
+Functions Added:
+mark_process_status
+wait_for_job 
