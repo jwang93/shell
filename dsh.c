@@ -205,6 +205,18 @@ void spawn_job(job_t *j, bool fg) {
 	int mypipe[2], infile, outfile;
 
 	infile = j->mystdin;
+	outfile = j->mystdout;
+	if(infile!= STDIN_FILENO){
+		infile = open(j->ifile, O_RDONLY);
+		printf("%s\n", "infile changed!");
+	}
+	if(outfile!= STDIN_FILENO){
+		outfile =open(j->ofile, O_TRUNC | O_CREAT | O_WRONLY, 0666);
+		printf("%s\n", "outfile changed!");
+	}
+	dup2 (infile, 0);
+	dup2 (outfile, 1);
+
 	/* Check for input/output redirection; If present, set the IO descriptors 
 	 * to the appropriate files given by the user 
 	 */
@@ -677,7 +689,6 @@ int main() {
 			process_t * p = next_job->first_process;
 
 			char* cmd = p->argv[0];
-			printf("%s\n", cmd);
 			if(strcmp (cmd,"cd") == 0){
 				//printf("%s\n", "found cd");
 			} 
