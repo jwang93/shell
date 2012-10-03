@@ -232,7 +232,6 @@ void spawn_job(job_t *j, bool fg) {
         } 
        else 
          outfile = j->mystdout;
-     	printf("outfile: %d\n", outfile);
 		switch (pid = fork()) {
 
 		   case -1: /* fork failure */
@@ -262,7 +261,6 @@ void spawn_job(job_t *j, bool fg) {
 			}
        		if (outfile != STDOUT_FILENO)
          	{
-         		printf("%s\n", "inside out");
            		dup2 (outfile, STDOUT_FILENO);
            		close (outfile);
 	         }
@@ -292,6 +290,8 @@ void spawn_job(job_t *j, bool fg) {
         	close (outfile);
 		infile = mypipe[0];
 		
+
+	}
 		if(fg){
 			wait_for_job (j);
 			/* Wait for the job to complete */
@@ -300,8 +300,7 @@ void spawn_job(job_t *j, bool fg) {
 		else {
 			/* Background job */
 			put_job_in_background (j, 0);
-		}
-	}
+		}	
 }
 
 bool init_job(job_t *j) {
@@ -669,7 +668,7 @@ int main() {
 			continue; /* NOOP; user entered return or spaces with return */
 		}
 		/* Only for debugging purposes and to show parser output */
-		print_job();
+		//print_job();
 
 		job_t * next_job = first_job;
 		while(next_job){
@@ -686,7 +685,7 @@ int main() {
 			spawn_job(next_job, !bg);
 			job_t * old = next_job;
 			next_job=next_job->next;
-			free_job(old);
+			
 		}
 		/* You need to loop through jobs list since a command line can contain ;*/
 		/* Check for built-in commands */
