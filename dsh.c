@@ -25,11 +25,8 @@ int job_is_completed(job_t *j);
 bool free_job(job_t *j);
 void eval(job_t *j);
 void wait_for_job(job_t *j);
-void put_job_in_foreground (job_t *j);//, int cont);
-void put_job_in_background (job_t *j);//, int cont);
-void list_jobs (job_t *j);//, int cont);
-void change_directory (job_t *j);
-bool check_builtin(job_t *j);
+void put_job_in_foreground (job_t *j, int cont);
+void put_job_in_background (job_t *j, int cont);
 
 /* Initializing the header for the job list. The active jobs are linked into a list. */
 job_t *first_job = NULL;
@@ -235,7 +232,6 @@ void spawn_job(job_t *j, bool fg) {
         } 
        else 
          outfile = j->mystdout;
-     	printf("outfile: %d\n", outfile);
 		switch (pid = fork()) {
 
 		   case -1: /* fork failure */
@@ -265,7 +261,6 @@ void spawn_job(job_t *j, bool fg) {
 			}
        		if (outfile != STDOUT_FILENO)
          	{
-         		printf("%s\n", "inside out");
            		dup2 (outfile, STDOUT_FILENO);
            		close (outfile);
 	         }
@@ -294,7 +289,9 @@ void spawn_job(job_t *j, bool fg) {
        	if (outfile != j->mystdout)
         	close (outfile);
 		infile = mypipe[0];
+		
 
+	}
 		if(fg){
 			wait_for_job (j);
 			/* Wait for the job to complete */
@@ -303,8 +300,7 @@ void spawn_job(job_t *j, bool fg) {
 		else {
 			/* Background job */
 			put_job_in_background (j, 0);
-		}
-	}
+		}	
 }
 
 bool init_job(job_t *j) {
@@ -330,7 +326,7 @@ bool init_process(process_t *p) {
 	p->status = -1; /* set by waitpid */
 	p->argc = 0;
 	p->next = NULL;
-
+	
         if(!(p->argv = (char **)calloc(MAX_ARGS,sizeof(char *))))
                 return false;
 
@@ -343,11 +339,11 @@ bool readprocessinfo(process_t *p, char *cmd) {
 	int args_pos = 0; /* iterator for arguments*/
 
 	int argc = 0;
-
+	
 	while (isspace(cmd[cmd_pos])){++cmd_pos;} /* ignore any spaces */
 	if(cmd[cmd_pos] == '\0')
 		return true;
-
+	
 	while(cmd[cmd_pos] != '\0'){
 		if(!(p->argv[argc] = (char *)calloc(MAX_LEN_CMDLINE, sizeof(char))))
 			return false;
@@ -474,7 +470,7 @@ bool readcmdline(char *msg) {
 				}
 				valid_input = false;
 				break;
-
+			
 			    case '>': /* output redirection */
 				current_job->ofile = (char *) calloc(MAX_LEN_FILENAME, sizeof(char));
 				if(!current_job->ofile)
@@ -607,29 +603,27 @@ void eval(job_t *j){
 			perror("waitpid()");
        		exit(EXIT_FAILURE);
 		}
-
+			
 	} else{
 		/* The fork failed.  */
         perror ("fork");
         exit (1);
 	}
-
+	
 	return;    
 }
 
-void put_job_in_foreground (job_t *j)//, int cont) 
-{
+void put_job_in_foreground (job_t *j, int cont) {
        /* Put the job into the foreground.  */
        tcsetpgrp (shell_terminal, j->pgid);
      
        /* Send the job a continue signal, if necessary.  */
-       /*if (cont)
+       if (cont)
          {
            tcsetattr (shell_terminal, TCSADRAIN, &j->tmodes);
            if (kill (- j->pgid, SIGCONT) < 0)
              perror ("kill (SIGCONT)");
-         }*/
-         continue_job(j);
+         }
      
        wait_for_job (j);
      
@@ -644,95 +638,20 @@ void put_job_in_foreground (job_t *j)//, int cont)
 /* Put a job in the background.  If the cont argument is true, send
         the process group a SIGCONT signal to wake it up.  */
      
-void put_job_in_background (job_t *j)//, int cont) 
-{
+void put_job_in_background (job_t *j, int cont) {
        /* Send the job a continue signal, if necessary.  */
-       /*if (cont)
+       if (cont)
          if (kill (-j->pgid, SIGCONT) < 0)
-           perror ("kill (SIGCONT)");*/
-       continue_job(j);
+           perror ("kill (SIGCONT)");
 }
 
-void change_directory (job_t *j)
-{
+void change_directory (job_t *j, int cont) {
      //change directory
-     process_t * p = j->first_process;
-     chdir(p->argv[0]);
-     //check status
-     continue_job(j);
+     //I know he talked about this one being easy - can't remember what he said to do for it
 }
 
-void list_jobs (job_t *j, int cont) 
-{
+void list_jobs (job_t *j, int cont) {
      //print the jobs and their status
-     job_t *curr_job = first_job;
-     
-     while(curr_job)
-     {
-         int n = 0;
-         char* cmd = p->argv[n];
-         while(cmd != NULL)
-         {
-             printf("%s \t ", cmd);
-             if(p->completed == true)
-             {
-                 printf("(Status: COMPLETED)\n");
-                 job_t * old = next_job;
-                 next_job=next_job->next;
-			     free_job(old);//and then get rid of it
-              }
-              else
-              {
-                  if(p->stopped == true)
-                  {
-                      printf("(Status: STOPPED)\n");
-                  }
-                  else
-                  {
-                      printf("(Status: RUNNING)\n");
-                  }
-               }
-           }
-        }
-        if(curr_job->next != NULL)
-            curr_job = curr_job->next;
-     }
-     continue_job(j);
-}
-
-/*
- * Checks for built-in command. 
- * If there is one it executes it and returns true.
- * Otherwise it returns false.
- */
-bool check_builtin(job_t *j)
-{
-     process_t * p = j->first_process;
-     char* cmd = p->argv[0];
-     printf("%s\n", cmd);
-     
-     if(strcmp (cmd,"cd") == 0)
-     {
-         //printf("%s\n", "found cd");
-         change_directory(j);
-         return true;
-     } 
-     if(strcmp(cmd,"bg") == 0)
-     {
-         put_job_in_background(j, );
-         return true;
-     }
-     if(strcmp(cmd,"fg") == 0)
-     {
-         put_job_in_foreground(j, );
-         return true;
-     }
-     if(strcmp(cmd,"jobs") == 0)
-     {
-         list_jobs(j, );
-         return true;
-     }
-     return false;
 }
 
 int main() {
@@ -749,13 +668,10 @@ int main() {
 			continue; /* NOOP; user entered return or spaces with return */
 		}
 		/* Only for debugging purposes and to show parser output */
-		print_job();
-		
-		bool isBuiltIn = check_builtin(next_job);
-		
+		//print_job();
+
 		job_t * next_job = first_job;
-		while(next_job && !isBuiltIn)
-        {
+		while(next_job){
 			bool bg = next_job->bg;
 
 			process_t * p = next_job->first_process;
@@ -764,13 +680,12 @@ int main() {
 			printf("%s\n", cmd);
 			if(strcmp (cmd,"cd") == 0){
 				//printf("%s\n", "found cd");
-				change_directory(p);
 			} 
 			/*If not built-in*/
 			spawn_job(next_job, !bg);
 			job_t * old = next_job;
 			next_job=next_job->next;
-			free_job(old);
+			
 		}
 		/* You need to loop through jobs list since a command line can contain ;*/
 		/* Check for built-in commands */
