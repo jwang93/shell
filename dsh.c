@@ -204,6 +204,7 @@ void spawn_job(job_t *j, bool fg) {
 	dup2 (infile, 0);
 	dup2 (outfile, 1);
 
+
 	for(p = j->first_process; p; p = p->next) {
 
 		if(p->completed)
@@ -642,6 +643,8 @@ int main() {
 
 		job_t * next_job = first_job;
 		while(next_job){
+			if(!job_is_completed(next_job)){
+
 			bool bg = next_job->bg;
 
 			process_t * p = next_job->first_process;
@@ -655,8 +658,9 @@ int main() {
 			}
 			/*If not built-in*/
 			spawn_job(next_job, !bg);
+			}
 			next_job = next_job->next;
-			
+		
 		}
 		/* You need to loop through jobs list since a command line can contain ;*/
 		/* Check for built-in commands */
