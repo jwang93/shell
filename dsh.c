@@ -644,20 +644,17 @@ int main() {
 		job_t * next_job = first_job;
 		while(next_job){
 			if(!job_is_completed(next_job)){
-
-			bool bg = next_job->bg;
-
-			process_t * p = next_job->first_process;
-
-			char* cmd = p->argv[0];
-			if(strcmp (cmd,"cd") == 0){
-				//printf("%s\n", "found cd");
-			} 
-			if (strcmp (cmd, "jobs") == 0) {
-				list_jobs(next_job, 0);
-			}
-			/*If not built-in*/
-			spawn_job(next_job, !bg);
+				bool bg = next_job->bg;
+				process_t * p = next_job->first_process;
+				char* cmd = p->argv[0];
+				if(strcmp (cmd,"cd") == 0){
+					//printf("%s\n", "found cd");
+				} 
+				if (strcmp (cmd, "jobs") == 0) {
+					list_jobs(next_job, 0);
+				}
+				/*If not built-in*/
+				spawn_job(next_job, !bg);
 			}
 			next_job = next_job->next;
 		
