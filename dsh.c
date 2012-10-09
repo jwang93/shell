@@ -27,9 +27,23 @@ void restore_control(job_t *j);
 void wait_for_job(job_t *j);
 void put_job_in_foreground (job_t *j, int cont);
 void put_job_in_background (job_t *j, int cont);
-
+int find_lowest_index();
 /* Initializing the header for the job list. The active jobs are linked into a list. */
 job_t *first_job = NULL;
+pid_t * job_array;
+
+
+/*Finds open spot in job_array
+  returns -1 when array is full
+*/
+int find_lowest_index(){
+	int i;
+	for(i=0; i<20; i++){
+		if(!job_array[i])
+			return i;
+	}
+	return -1;
+}
 
 /* Find the job with the indicated pgid.  */
 job_t *find_job(pid_t pgid) {
@@ -227,8 +241,13 @@ void spawn_job(job_t *j, bool fg) {
 			exit(EXIT_FAILURE);
 
 		   case 0: /* child */
-			if (j->pgid < 0) j->pgid = getpid();
+			if (j->pgid < 0){
+				 j->pgid = getpid();
+				 int low = find_lowest_index();
+				 job_array[low] = j->pgid;
+			}
 			p->pid = 0;
+
 			if (!setpgid(0,j->pgid)) if(fg) tcsetpgrp(shell_terminal, j->pgid); // assign the terminal
 
 			/* Set the handling for job control signals back to the default. */
@@ -628,7 +647,7 @@ void list_jobs (job_t *j, int cont) {
 int main() {
 
 	init_shell();
-
+	job_array = (pid_t *) malloc(20*sizeof(pid_t));
 	while(1) {
 		if(!readcmdline(promptmsg())) {
 			if (feof(stdin)) { /* End of file (ctrl-d) */
@@ -643,21 +662,27 @@ int main() {
 
 		job_t * next_job = first_job;
 		while(next_job){
-			if(!job_is_completed(next_job)){
-				bool bg = next_job->bg;
-				process_t * p = next_job->first_process;
-				char* cmd = p->argv[0];
-				if(strcmp (cmd,"cd") == 0){
-					//printf("%s\n", "found cd");
-				} 
-				if (strcmp (cmd, "jobs") == 0) {
-					list_jobs(next_job, 0);
+			if(!job_is_completed(next_job) && !job_is_stopped(next_job)){
+				int lowest = find_lowest_index();
+				printf("%s %d\n","Lowest index: ", lowest);
+				if(lowest!=-1){
+					bool bg = next_job->bg;
+
+					process_t * p = next_job->first_process;
+
+					char* cmd = p->argv[0];
+					if(strcmp (cmd,"cd") == 0){
+						//printf("%s\n", "found cd");
+					} 
+					if (strcmp (cmd, "jobs") == 0) {
+						list_jobs(next_job, 0);
+					}
+					/*If not built-in*/
+					spawn_job(next_job, !bg);
 				}
-				/*If not built-in*/
-				spawn_job(next_job, !bg);
 			}
 			next_job = next_job->next;
-		
+			
 		}
 		/* You need to loop through jobs list since a command line can contain ;*/
 		/* Check for built-in commands */
