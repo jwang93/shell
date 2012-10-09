@@ -28,6 +28,7 @@ void wait_for_job(job_t *j);
 void put_job_in_foreground (job_t *j, int cont);
 void put_job_in_background (job_t *j, int cont);
 int find_lowest_index();
+job_t *find_prev_job(pid_t pgid);
 /* Initializing the header for the job list. The active jobs are linked into a list. */
 job_t *first_job = NULL;
 pid_t * job_array;
@@ -44,7 +45,29 @@ int find_lowest_index(){
 	}
 	return -1;
 }
-
+void remove_and_free(pid_t pgid){
+	job_t * j = find_prev_job(pgid);
+	
+	if(!j){ //must be first job
+		if(first_job!= j)
+			perror("wrong pgid");
+		job_t * tmp = first_job;
+		first_job=first_job->next;
+		free_job(tmp);
+		return;
+	}
+	job_t * tmp = j->next;
+	j->next = tmp->next;
+	free_job(tmp);
+}
+/* Find the job with the indicated pgid.  */
+job_t *find_prev_job(pid_t pgid) {
+	job_t *j;
+	for(j = first_job; j->next; j = j->next)
+		if(j->next->pgid == pgid)
+	    		return j;
+	return NULL;
+}
 /* Find the job with the indicated pgid.  */
 job_t *find_job(pid_t pgid) {
 
