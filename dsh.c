@@ -684,14 +684,14 @@ void list_jobs (job_t *j, int cont) {
 			//- is second most recently invoke bg job
 			// is for anything else 
 			char* position;
+			position = " ";
+			// if (i == 19 && temp->bg) position = "+";
+			// else {
+			// 	if (find_job(job_array[i+2])->bg) {
 
-			if (i == 19 && temp->bg) position = "+";
-			else {
-				if (find_job(job_array[i+2])->bg) {
+			// 	}
+			// }
 
-				}
-			}
-			
 			printf("[%d]%s  %s           %s\n", i, position, status, temp->commandinfo);
 		}
 	}
