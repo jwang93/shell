@@ -234,6 +234,7 @@ void spawn_job(job_t *j, bool fg) {
 
         else outfile = j->mystdout;
 
+        printf("Reached here\n");
 		switch (pid = fork()) {
 
 		   case -1: /* fork failure */
@@ -241,7 +242,9 @@ void spawn_job(job_t *j, bool fg) {
 			exit(EXIT_FAILURE);
 
 		   case 0: /* child */
-			if (j->pgid < 0){
+			printf("Here is the j->pgid %d\n", j->pgid);
+			if ((int) j->pgid < 0){
+				 printf("Updating the job_array!\n");
 				 j->pgid = getpid();
 				 int low = find_lowest_index();
 				 job_array[low] = j->pgid;
@@ -275,7 +278,11 @@ void spawn_job(job_t *j, bool fg) {
 			/* establish child process group here to avoid race
 			* conditions. */
 			p->pid = pid;
-			if (j->pgid < 0) j->pgid = pid;
+			if (j->pgid < 0) {
+				j->pgid = pid;
+				int low = find_lowest_index();
+				job_array[low] = j->pgid;			
+			}	
 			setpgid(pid, j->pgid);
 		}
 
@@ -637,10 +644,33 @@ void change_directory (job_t *j, int cont) {
 
 void list_jobs (job_t *j, int cont) {
      //print the jobs and their status
-	job_t * next_job = first_job;
-	while(next_job){
-		printf("Jobs Name: %s\n", next_job->commandinfo);
-		next_job = next_job->next;
+
+	int i;
+	for (i = 0; i < 20; i++) {
+		if (job_array[i] != 0) {
+			job_t * temp = find_job(job_array[i]);
+			char* status;
+			if (temp->first_process->stopped) {
+				status = "Stopped";
+			}
+			else if (temp->first_process->completed) {
+				status = "Completed";
+			}
+			else status = "Running";
+			//+ is most recently invoked bg job
+			//- is second most recently invoke bg job
+			// is for anything else 
+			char* position;
+
+			if (i == 19 && temp->bg) position = "+";
+			else {
+				if (find_job(job_array[i+2])->bg) {
+
+				}
+			}
+			
+			printf("[%d]%s  %s           %s\n", i, position, status, temp->commandinfo);
+		}
 	}
 }
 
