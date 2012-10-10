@@ -45,24 +45,27 @@ int find_lowest_index(){
 	}
 	return -1;
 }
+
 void remove_and_free(job_t *j){
 	job_t * prev = find_prev_job(j);
 	if(!prev){ //must be first job
 		if(first_job != j)
 			perror("wrong pgid");
 		job_t * tmp = first_job;
-		first_job=first_job->next;
+		if (first_job->next) first_job = first_job->next;
 		free_job(tmp);
 		return;
 	}
-	job_t * tmp = j->next;
-	j->next = tmp->next;
-	free_job(tmp);
+	if (j->next) {
+		job_t * tmp;
+		tmp = j->next;
+		j->next = tmp->next;
+		free_job(tmp);
+	}
 }
 /* Find the prevzjob with the indicated pgid.  */
 job_t *find_prev_job(job_t *j) {
 	job_t *  tmp = first_job;
-
 	while(tmp->next){
 		if(tmp->next == j){
 			return tmp;
@@ -96,7 +99,7 @@ int mark_process_status (pid_t pid, int status) {
                    p->completed = 1;
                    if (WIFSIGNALED(status))
                      fprintf (stderr, "%d: Terminated by signal %d.\n", (int) pid, WTERMSIG(p->status));
-                }
+               }
                return 0;
             }
        fprintf (stderr, "No child process %d.\n", pid);
@@ -105,11 +108,11 @@ int mark_process_status (pid_t pid, int status) {
 
     else if (pid == 0 || errno == ECHILD) return -1;
    
-   else {
+    else {
      /* Other weird errors.  */
      perror ("waitpid");
      return -1;
-   }
+    }
 }
 /* Return true if all processes in the job have stopped or completed.  */
 int job_is_stopped(job_t *j) {
@@ -260,7 +263,6 @@ void spawn_job(job_t *j, bool fg) {
 
         else outfile = j->mystdout;
 
-        printf("Reached here\n");
 		switch (pid = fork()) {
 
 		   case -1: /* fork failure */
@@ -318,19 +320,21 @@ void spawn_job(job_t *j, bool fg) {
 		infile = mypipe[0];
 	}
 
-		if(fg) {
-			wait_for_job (j);
-			/* Wait for the job to complete */
-			put_job_in_foreground (j, 0);
-		}
-		else {
-						//wait_for_job (j);
+	if(fg) {
+		wait_for_job (j);
+		/* Wait for the job to complete */
+		put_job_in_foreground (j, 0);
+	}
+	
+	else {
+					//wait_for_job (j);
 
-			put_job_in_background (j, 0);
-		}
-		dup2(original_input, 0);
-		dup2(original_output, 1);
-		restore_control(j);
+		put_job_in_background (j, 0);
+	}
+
+	dup2(original_input, 0);
+	dup2(original_output, 1);
+	restore_control(j);
 
 }
 
@@ -682,6 +686,7 @@ void list_jobs (job_t *j, int cont) {
 	int i;
 	for (i = 0; i < 20; i++) {
 		if (job_array[i] != 0) {
+			//printf("Getting in for iter: %d\n", i);
 			job_t * temp = find_job(job_array[i]);
 			char* status;
 			if (temp->first_process->stopped) {
@@ -704,10 +709,14 @@ void list_jobs (job_t *j, int cont) {
 			// }
 
 			printf("[%d]%s  %s           %s\n", i, position, status, temp->commandinfo);
+			
 			if(temp->first_process->completed){
+				//printf("Seg faul here");
 				remove_and_free(temp);
 				job_array[i]=0;
 			}
+
+			//printf("Got to the end of jobs helper!\n");
 		}
 	}
 }
@@ -732,26 +741,42 @@ int main() {
 		while(next_job){
 			if(next_job->pgid ==-1){
 				int lowest = find_lowest_index();
-				printf("%s %d\n","Lowest index: ", lowest);
-				if(lowest!=-1){
+				//printf("%s %d\n","Lowest index: ", lowest);
+				if(lowest != -1){
 					bool bg = next_job->bg;
-
 					process_t * p = next_job->first_process;
-
 					char* cmd = p->argv[0];
+
 					if(strcmp (cmd,"cd") == 0){
+
+						break;
 						//printf("%s\n", "found cd");
 					} 
 					else if (strcmp (cmd, "jobs") == 0) {
 						list_jobs(next_job, 0);
 						job_t *tmp = next_job;
-						next_job=next_job->next;
-						remove_and_free(tmp);
+						if (next_job->next) next_job=next_job->next;
+						remove_and_free(tmp); //why are we remove and freeing a built in command 
+						break;
 
-					}else {					/*If not built-in*/
+					} 
+
+					else if (strcmp(cmd, "fg") == 0) { 
+						break;
+
+					}
+
+					else if (strcmp(cmd, "bg") == 0) {
+						break;
+
+					}
+
+
+					else {					/*If not built-in*/
 						spawn_job(next_job, !bg);
 						next_job = next_job->next;
 					}
+
 				}
 			}
 			else

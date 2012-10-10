@@ -1,9 +1,29 @@
-Getting some QA Action going... 
 
-1. When we finish a job, we need to kill it. For example, 
-	command 1: /bin/ls -l  (works perfectly)
-	command 2: /bin/ls (it will execute command 1 + 2; but otherwise, works perfectly)
-	command 3: /bin/ls | /usr/bin/wc (it will executed command 1, 2, 3)
-
-	I don't think that is what's supposed to happen right? 
 	
+What needs to get done:
+
+1. Fix the seg fault issue when calling jobs 
+NEW PROBLEM:
+	after i call a jobs command, the bg job just keeps going... 
+
+
+2. Implement cd, fg, bg, jobs 
+3. Code refactor 
+4. Write the README 
+
+
+NEW BUG:
+	cmd: /bin/sleep 3 &
+	cmd: /bin/ls 
+	cmd: jobs 
+	//everything works properly
+
+	cmd: bin/sleep 3 &
+	cmd: jobs 
+	//everything gets broken, every new cmd just prints jobs 
+
+	cmd: /bin/sleep 20 &
+	cmd: /bin/ls 
+	//you need to wait 20 seconds for the job to finish, it isn't executing in background 
+
+	if a job is in bg, we need to actually run it in bg, we need to do more than just return the shell 
