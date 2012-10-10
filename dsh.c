@@ -28,7 +28,7 @@ void wait_for_job(job_t *j);
 void put_job_in_foreground (job_t *j, int cont);
 void put_job_in_background (job_t *j, int cont);
 int find_lowest_index();
-job_t *find_prev_job(pid_t pgid);
+job_t *find_prev_job(job_t *j);
 /* Initializing the header for the job list. The active jobs are linked into a list. */
 job_t *first_job = NULL;
 pid_t * job_array;
@@ -45,11 +45,10 @@ int find_lowest_index(){
 	}
 	return -1;
 }
-void remove_and_free(pid_t pgid){
-	job_t * j = find_prev_job(pgid);
-	
-	if(!j){ //must be first job
-		if(first_job!= j)
+void remove_and_free(job_t *j){
+	job_t * prev = find_prev_job(j);
+	if(!prev){ //must be first job
+		if(first_job != j)
 			perror("wrong pgid");
 		job_t * tmp = first_job;
 		first_job=first_job->next;
@@ -60,12 +59,16 @@ void remove_and_free(pid_t pgid){
 	j->next = tmp->next;
 	free_job(tmp);
 }
-/* Find the job with the indicated pgid.  */
-job_t *find_prev_job(pid_t pgid) {
-	job_t *j;
-	for(j = first_job; j->next; j = j->next)
-		if(j->next->pgid == pgid)
-	    		return j;
+/* Find the prevzjob with the indicated pgid.  */
+job_t *find_prev_job(job_t *j) {
+	job_t *  tmp = first_job;
+
+	while(tmp->next){
+		if(tmp->next == j){
+			return tmp;
+		}
+		tmp = tmp->next;
+	}
 	return NULL;
 }
 /* Find the job with the indicated pgid.  */
@@ -265,9 +268,9 @@ void spawn_job(job_t *j, bool fg) {
 			exit(EXIT_FAILURE);
 
 		   case 0: /* child */
-			printf("Here is the j->pgid %d\n", j->pgid);
+			//printf("Here is the j->pgid %d\n", j->pgid);
 			if ((int) j->pgid < 0){
-				 printf("Updating the job_array!\n");
+				// printf("Updating the job_array!\n");
 				 j->pgid = getpid();
 				 int low = find_lowest_index();
 				 job_array[low] = j->pgid;
@@ -314,14 +317,21 @@ void spawn_job(job_t *j, bool fg) {
        	if (outfile != j->mystdout) close (outfile);
 		infile = mypipe[0];
 	}
+
 		if(fg) {
 			wait_for_job (j);
 			/* Wait for the job to complete */
 			put_job_in_foreground (j, 0);
 		}
-		else put_job_in_background (j, 0);
+		else {
+						//wait_for_job (j);
+
+			put_job_in_background (j, 0);
+		}
 		dup2(original_input, 0);
 		dup2(original_output, 1);
+		restore_control(j);
+
 }
 
 void restore_control(job_t *j) {
@@ -632,7 +642,8 @@ void put_job_in_foreground (job_t *j, int cont) {
        /* Put the job into the foreground.  */
        tcsetpgrp (shell_terminal, j->pgid);
      
-       /* Send the job a continue signal, if necessary.  */
+       /* Send the job a 
+       	continue signal, if necessary.  */
        if (cont)
          {
            tcsetattr (shell_terminal, TCSADRAIN, &j->tmodes);
@@ -693,6 +704,10 @@ void list_jobs (job_t *j, int cont) {
 			// }
 
 			printf("[%d]%s  %s           %s\n", i, position, status, temp->commandinfo);
+			if(temp->first_process->completed){
+				remove_and_free(temp);
+				job_array[i]=0;
+			}
 		}
 	}
 }
@@ -707,7 +722,7 @@ int main() {
 				fflush(stdout);
 				printf("\n");
 				exit(EXIT_SUCCESS);
-                	}
+             	}
 			continue; /* NOOP; user entered return or spaces with return */
 		}
 		/* Only for debugging purposes and to show parser output */
@@ -715,7 +730,7 @@ int main() {
 
 		job_t * next_job = first_job;
 		while(next_job){
-			if(!job_is_completed(next_job) && !job_is_stopped(next_job)){
+			if(next_job->pgid ==-1){
 				int lowest = find_lowest_index();
 				printf("%s %d\n","Lowest index: ", lowest);
 				if(lowest!=-1){
@@ -727,15 +742,21 @@ int main() {
 					if(strcmp (cmd,"cd") == 0){
 						//printf("%s\n", "found cd");
 					} 
-					if (strcmp (cmd, "jobs") == 0) {
+					else if (strcmp (cmd, "jobs") == 0) {
 						list_jobs(next_job, 0);
+						job_t *tmp = next_job;
+						next_job=next_job->next;
+						remove_and_free(tmp);
+
+					}else {					/*If not built-in*/
+						spawn_job(next_job, !bg);
+						next_job = next_job->next;
 					}
-					/*If not built-in*/
-					spawn_job(next_job, !bg);
 				}
 			}
-			next_job = next_job->next;
-			
+			else
+				next_job = next_job->next;
+
 		}
 		/* You need to loop through jobs list since a command line can contain ;*/
 		/* Check for built-in commands */

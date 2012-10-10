@@ -1,6 +1,8 @@
 Reached here
 Reached here
+Reached here
 Here is the j->pgid -1
 Updating the job_array!
-Here is the j->pgid 78690
+Here is the j->pgid 88581
+Here is the j->pgid 88581
       12      12     114
