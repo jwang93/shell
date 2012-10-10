@@ -61,6 +61,9 @@ void remove_and_free(job_t *j){
 		tmp = j->next;
 		j->next = tmp->next;
 		free_job(tmp);
+	} else{
+		prev->next = NULL;
+		free_job(j);
 	}
 }
 /* Find the prevzjob with the indicated pgid.  */
@@ -676,9 +679,9 @@ void put_job_in_background (job_t *j, int cont) {
 }
 
 void change_directory (job_t *j, int cont) {
-     //change directory
-     //I know he talked about this one being easy - can't remember what he said to do for it
-}
+     if(chdir(j->first_process->argv[1])<0)
+     	perror("chdir error");
+ }
 
 void list_jobs (job_t *j, int cont) {
      //print the jobs and their status
@@ -748,9 +751,12 @@ int main() {
 					char* cmd = p->argv[0];
 
 					if(strcmp (cmd,"cd") == 0){
-
-						break;
-						//printf("%s\n", "found cd");
+						change_directory(next_job,0);
+						job_t * tmp = next_job;
+						next_job=next_job->next;
+						remove_and_free(tmp); //why are we remove and freeing a built in command 
+						//break;
+						
 					} 
 					else if (strcmp (cmd, "jobs") == 0) {
 						list_jobs(next_job, 0);
@@ -762,6 +768,22 @@ int main() {
 					} 
 
 					else if (strcmp(cmd, "fg") == 0) { 
+						int num = (int) next_job->first_process->argv[1];
+						pid_t p = job_array[num];
+						job_t* j = find_job(p);
+						printf("%s\n", j->commandinfo);
+						if(!j){
+							perror("wrong job number");
+							exit(0);
+						}
+						if(!j->first_process->stopped){
+							perror("job not suspended");
+							exit(0);
+						} 
+						put_job_in_foreground(j, 1);
+						job_t *tmp = next_job;
+						if (next_job->next) next_job=next_job->next;
+						remove_and_free(tmp); //why are we remove and freeing a built in command 
 						break;
 
 					}
