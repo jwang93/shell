@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 Bugs.txt
 GamePlan.txt
 Makefile
@@ -11,3 +12,6 @@ dsh.h
 dsh.log
 tmp.txt
 tmp2.txt
+=======
+      12      12     114
+>>>>>>> 333893037245a1e23ea0f8442ef118fecd3d6df6

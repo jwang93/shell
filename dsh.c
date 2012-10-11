@@ -48,8 +48,10 @@ int find_lowest_index(){
 void remove_and_free(job_t *j){
 	job_t * prev = find_prev_job(j);
 	if(!prev){ //must be first job
-		if(first_job != j)
+		if(first_job != j){
 			perror("wrong pgid");
+			exit(1);
+		}
 		job_t * tmp = first_job;
 		if (first_job->next) first_job = first_job->next;
 		free_job(tmp);
@@ -622,7 +624,6 @@ char* promptmsg() {
 
 
 void foreground (job_t *j, int cont) {
-
        if (cont) {
            tcsetattr (shell_terminal, TCSADRAIN, &j->tmodes);
            continue_job(j);
@@ -636,13 +637,17 @@ void foreground (job_t *j, int cont) {
 void background (job_t *j, int cont) {
        /* Send the job a continue signal, if necessary.  */
        if (cont)
-         if (kill (-j->pgid, SIGCONT) < 0)
+         if (kill (-j->pgid, SIGCONT) < 0){
            perror ("kill (SIGCONT)");
+           	exit(1);
+          }
 }
 
 void change_directory (job_t *j, int cont) {
-     if(chdir(j->first_process->argv[1])<0)
+     if(chdir(j->first_process->argv[1])<0){
      	perror("chdir error");
+     	exit(1);
+     }
  }
 
 
@@ -683,13 +688,15 @@ void list_jobs (job_t *j, int cont) {
 }
 
 int main() {
-
+	int errfile =open(ERRFILE, O_APPEND | O_CREAT | O_WRONLY, 0666);
+	dup2(errfile, 2);
 	init_shell();
 	job_array = (pid_t *) malloc(20*sizeof(pid_t));
 	while(1) {
 		if(!readcmdline(promptmsg())) {
 			if (feof(stdin)) { /* End of file (ctrl-d) */
 				fflush(stdout);
+				close(errfile);
 				printf("\n");
 				exit(EXIT_SUCCESS);
              	}
