@@ -32,3 +32,12 @@ NEW BUG:
 New Problems:
 	when you try to fg 1, you segfault because your numbers are wrong
 	when you kill a process it actually completes 
+
+
+
+
+wait_for_job
+mark_process_status
+spawn_job
+
+Need to make note of the source that we used 
