@@ -66,7 +66,7 @@ void remove_and_free(job_t *j){
 		free_job(j);
 	}
 }
-/* Find the prevzjob with the indicated pgid.  */
+/* Find the prev job with the indicated pgid.  */
 job_t *find_prev_job(job_t *j) {
 	job_t *  tmp = first_job;
 	while(tmp->next){
@@ -224,9 +224,6 @@ void init_shell() {
 
 /* Sends SIGCONT signal to wake up the blocked job */
 void continue_job(job_t *j) {
-	int status = kill(-j->pgid, SIGCONT);
-	printf("status: %d\n", status);
-
 	if (kill(-j->pgid, SIGCONT) < 0) {
 		printf("ERROR: %s\n", strerror(errno));
 		perror("kill(SIGCONT)"); 
@@ -292,7 +289,6 @@ void spawn_job(job_t *j, bool fg) {
 				 job_array[low] = j->pgid;
 			}
 			p->pid = 0;
-
 			if (!setpgid(0,j->pgid)) if(fg) tcsetpgrp(shell_terminal, j->pgid); // assign the terminal
 
 			/* Set the handling for job control signals back to the default. */
@@ -334,16 +330,9 @@ void spawn_job(job_t *j, bool fg) {
 		infile = mypipe[0];
 	}
 
-	if(fg) {
-		/* Wait for the job to complete */
-		put_job_in_foreground (j, 0);
-	}
+	if(fg) put_job_in_foreground (j, 0);
+	else put_job_in_background (j, 0);
 	
-	else {
-					//wait_for_job (j);
-
-		put_job_in_background (j, 0);
-	}
 
 	dup2(original_input, 0);
 	dup2(original_output, 1);
@@ -352,6 +341,7 @@ void spawn_job(job_t *j, bool fg) {
 }
 
 void restore_control(job_t *j) {
+    tcsetpgrp (shell_terminal, j->pgid);       
 	tcsetpgrp(shell_terminal, shell_pgid);
 	tcgetattr (shell_terminal, &j->tmodes);
 	tcsetattr (shell_terminal, TCSADRAIN, &shell_tmodes);
@@ -388,7 +378,6 @@ bool readprocessinfo(process_t *p, char *cmd) {
 
 	int cmd_pos = 0; /*iterator for command; */
 	int args_pos = 0; /* iterator for arguments*/
-
 	int argc = 0;
 	
 	while (isspace(cmd[cmd_pos])){++cmd_pos;} /* ignore any spaces */
@@ -617,8 +606,19 @@ bool readcmdline(char *msg) {
 
 /* Build prompt messaage; Change this to include process ID (pid)*/
 char* promptmsg() {
-        return  "dsh$ ";
+        int shell_id = (int) shell_pgid;
+   		const char buf[] = "dsh-";
+   		char str [10];
+   		sprintf(str, "%s%d", buf, shell_id);
+        char* first = str;
+        char* second = "$ ";
+        char* both = malloc(strlen(first) + strlen(second) + 2);
+		strcpy(both, first);
+		strcat(both, "");
+		strcat(both, second);
+        return both;
 }
+
 void eval(job_t *j){
 	pid_t pid;
 
@@ -656,28 +656,23 @@ void eval(job_t *j){
 }
 
 void put_job_in_foreground (job_t *j, int cont) {
-       /* Put the job into the foreground.  */
-       tcsetpgrp (shell_terminal, j->pgid);
-     
-       /* Send the job a 
-       	continue signal, if necessary.  */
+
        if (cont) {
            tcsetattr (shell_terminal, TCSADRAIN, &j->tmodes);
            continue_job(j);
        }
      
        wait_for_job (j);
-     
+       restore_control(j);
+
        /* Put the shell back in the foreground.  */
-       tcsetpgrp (shell_terminal, shell_pgid);
-       /* Restore the shell's terminal modes.  */
-       tcgetattr (shell_terminal, &j->tmodes);
-       tcsetattr (shell_terminal, TCSADRAIN, &shell_tmodes);
+       // tcsetpgrp (shell_terminal, shell_pgid);
+       // /* Restore the shell's terminal modes.  */
+       // tcgetattr (shell_terminal, &j->tmodes);
+       // tcsetattr (shell_terminal, TCSADRAIN, &shell_tmodes);
 }
 
-/* Put a job in the background.  If the cont argument is true, send
-        the process group a SIGCONT signal to wake it up.  */
-     
+
 void put_job_in_background (job_t *j, int cont) {
        /* Send the job a continue signal, if necessary.  */
        if (cont)
@@ -694,14 +689,12 @@ void change_directory (job_t *j, int cont) {
 pid_t non_block_update () {
 	int status;
 	pid_t pid;
-	
 	pid = waitpid(WAIT_ANY, &status, WNOHANG | WUNTRACED);
 	return pid;
 
 }
 
 void list_jobs (job_t *j, int cont) {
-     //print the jobs and their status
 	pid_t bg_pid;
 	do {
 		bg_pid = non_block_update();
@@ -711,44 +704,20 @@ void list_jobs (job_t *j, int cont) {
 		}
 	}
 	while (bg_pid > 0);
-
-	
-
 	int i;
 	for (i = 0; i < 20; i++) {
 		if (job_array[i] != 0) {
-			//printf("Getting in for iter: %d\n", i);
 			job_t * temp = find_job(job_array[i]);
-			printf("Job Array [%d]: %d\n", i, job_array[i]);
 			char* status;
-			if (temp->first_process->stopped) {
-				status = "Stopped";
-			}
-			else if (temp->first_process->completed) {
-				status = "Completed";
-			}
+			if (temp->first_process->stopped) status = "Stopped";
+			else if (temp->first_process->completed) status = "Completed";
 			else status = "Running";
-			//+ is most recently invoked bg job
-			//- is second most recently invoke bg job
-			// is for anything else 
-			char* position;
-			position = " ";
-			// if (i == 19 && temp->bg) position = "+";
-			// else {
-			// 	if (find_job(job_array[i+2])->bg) {
-
-			// 	}
-			// }
-
+			char* position = " ";
 			printf("[%d]%s  %s           %s\n", i, position, status, temp->commandinfo);
-			
 			if(temp->first_process->completed){
-				//printf("Seg faul here");
 				remove_and_free(temp);
-				job_array[i]=0;
+				job_array[i] = 0;
 			}
-
-			//printf("Got to the end of jobs helper!\n");
 		}
 	}
 }
@@ -766,8 +735,6 @@ int main() {
              	}
 			continue; /* NOOP; user entered return or spaces with return */
 		}
-		/* Only for debugging purposes and to show parser output */
-		//print_job();
 
 		job_t * next_job = first_job;
 		while(next_job){
@@ -798,15 +765,7 @@ int main() {
 
 					else if (strcmp(cmd, "fg") == 0) { 
 						//int num0 = (int) next_job->first_process->argv[0];
-						char* num1 = next_job->first_process->argv[1];
-
-						int res = atoi(num1);
-
-						// printf("Got here for debugging\n");
-						// printf("The value of jobs array at res: %d\n", job_array[res]);
-						
-						job_t* j = find_job(job_array[res]);
-						printf("%s\n", j->commandinfo);
+						job_t* j = find_job(job_array[atoi(next_job->first_process->argv[1])]);
 						if(!j){
 							perror("wrong job number");
 							exit(0);
@@ -818,22 +777,14 @@ int main() {
 						put_job_in_foreground(j, 1);
 						job_t *tmp = next_job;
 						if (next_job->next) next_job=next_job->next;
-						remove_and_free(tmp); //why are we remove and freeing a built in command 
+						remove_and_free(tmp);
 						break;
 
 					}
 
 					else if (strcmp(cmd, "bg") == 0) {
 
-						char* num1 = next_job->first_process->argv[1];
-
-						int res = atoi(num1);
-
-						// printf("Got here for debugging\n");
-						// printf("The value of jobs array at res: %d\n", job_array[res]);
-						
-						job_t* j = find_job(job_array[res]);
-						printf("%s\n", j->commandinfo);
+						job_t* j = find_job(job_array[atoi(next_job->first_process->argv[1])]);
 						if(!j){
 							perror("wrong job number");
 							exit(0);
@@ -849,25 +800,14 @@ int main() {
 						break;
 					}
 
-
 					else {					/*If not built-in*/
 						spawn_job(next_job, !bg);
 						next_job = next_job->next;
 					}
-
 				}
 			}
-			else
-				next_job = next_job->next;
-
+			else next_job = next_job->next;
 		}
-		/* You need to loop through jobs list since a command line can contain ;*/
-		/* Check for built-in commands */
-		/* If not built-in */
-			/* If job j runs in foreground */
-			/* spawn_job(j,true) */
-			/* else */
-			/* spawn_job(j,false) */
 	}
 }
 
