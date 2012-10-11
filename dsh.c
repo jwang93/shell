@@ -87,7 +87,7 @@ job_t *find_job(pid_t pgid) {
 	return NULL;
 }
 
-int mark_process_status (pid_t pid, int status) {
+int process_status (pid_t pid, int status) {
    job_t *j;
    process_t *p;
  
@@ -97,7 +97,10 @@ int mark_process_status (pid_t pid, int status) {
          for (p = j->first_process; p; p = p->next)
            if (p->pid == pid) {
                p->status = status;
-               if (WIFSTOPPED(status)) p->stopped = 1;
+               if (WIFSTOPPED(status)) {
+               	 printf("Got here for WIFSTOPPED!\n");
+               	 p->stopped = 1;
+               } 
                else {
                    p->completed = 1;
                    if (WIFSIGNALED(status))
@@ -151,7 +154,7 @@ void wait_for_job(job_t *j) {
    pid_t pid;
    do
      pid = waitpid(WAIT_ANY, &status, WUNTRACED);
-   while (!mark_process_status(pid, status)&& !job_is_stopped(j)
+   while (!process_status(pid, status)&& !job_is_stopped(j)
           && !job_is_completed(j));
  }
 /* Find the last process in the pipeline (job).  */
@@ -221,8 +224,14 @@ void init_shell() {
 
 /* Sends SIGCONT signal to wake up the blocked job */
 void continue_job(job_t *j) {
-	if(kill(-j->pgid, SIGCONT) < 0)
-		perror("kill(SIGCONT)");
+	int status = kill(-j->pgid, SIGCONT);
+	printf("status: %d\n", status);
+
+	if (kill(-j->pgid, SIGCONT) < 0) {
+		printf("ERROR: %s\n", strerror(errno));
+		perror("kill(SIGCONT)"); 
+	}
+
 }
 
 
@@ -651,18 +660,15 @@ void put_job_in_foreground (job_t *j, int cont) {
      
        /* Send the job a 
        	continue signal, if necessary.  */
-       if (cont)
-         {
+       if (cont) {
            tcsetattr (shell_terminal, TCSADRAIN, &j->tmodes);
-           if (kill (- j->pgid, SIGCONT) < 0)
-             perror ("kill (SIGCONT)");
-         }
+           continue_job(j);
+       }
      
        wait_for_job (j);
      
        /* Put the shell back in the foreground.  */
        tcsetpgrp (shell_terminal, shell_pgid);
-     
        /* Restore the shell's terminal modes.  */
        tcgetattr (shell_terminal, &j->tmodes);
        tcsetattr (shell_terminal, TCSADRAIN, &shell_tmodes);
@@ -691,6 +697,7 @@ void list_jobs (job_t *j, int cont) {
 		if (job_array[i] != 0) {
 			//printf("Getting in for iter: %d\n", i);
 			job_t * temp = find_job(job_array[i]);
+			printf("Job Array [%d]: %d\n", i, job_array[i]);
 			char* status;
 			if (temp->first_process->stopped) {
 				status = "Stopped";
@@ -768,9 +775,19 @@ int main() {
 					} 
 
 					else if (strcmp(cmd, "fg") == 0) { 
-						int num = (int) next_job->first_process->argv[1];
-						pid_t p = job_array[num];
-						job_t* j = find_job(p);
+						//int num0 = (int) next_job->first_process->argv[0];
+						char* num1 = next_job->first_process->argv[1];
+						printf("Here is next_job: %s\n", next_job->commandinfo);
+
+						int res = atoi(num1);
+						printf("Here is the num1 %d\n", res);
+
+						pid_t p = job_array[1];
+						// printf("Got here for debugging\n");
+						// printf("The value of jobs array at res: %d\n", job_array[res]);
+						printf("The pid_t p: %d\n", p);
+						
+						job_t* j = find_job(job_array[1]);
 						printf("%s\n", j->commandinfo);
 						if(!j){
 							perror("wrong job number");
@@ -780,6 +797,7 @@ int main() {
 							perror("job not suspended");
 							exit(0);
 						} 
+						printf("we got here...\n");
 						put_job_in_foreground(j, 1);
 						job_t *tmp = next_job;
 						if (next_job->next) next_job=next_job->next;
@@ -789,6 +807,7 @@ int main() {
 					}
 
 					else if (strcmp(cmd, "bg") == 0) {
+
 						break;
 
 					}

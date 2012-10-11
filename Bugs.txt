@@ -27,3 +27,8 @@ NEW BUG:
 	//you need to wait 20 seconds for the job to finish, it isn't executing in background 
 
 	if a job is in bg, we need to actually run it in bg, we need to do more than just return the shell 
+
+
+New Problems:
+	when you try to fg 1, you segfault because your numbers are wrong
+	when you kill a process it actually completes 
