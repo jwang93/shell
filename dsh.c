@@ -258,7 +258,7 @@ void spawn_job(job_t *j, bool fg) {
 	if(outfile!= STDOUT_FILENO) outfile =open(j->ofile, O_TRUNC | O_CREAT | O_WRONLY, 0666);
 	dup2 (infile, 0);
 	dup2 (outfile, 1);
-
+	int errfile;
 
 	for(p = j->first_process; p; p = p->next) {
 
@@ -283,6 +283,8 @@ void spawn_job(job_t *j, bool fg) {
 
 		   case 0: /* child */
 			//printf("Here is the j->pgid %d\n", j->pgid);
+			errfile = open("dsh.log", O_APPEND | O_CREAT | O_WRONLY, 0666);
+			dup2(errfile,2);
 			if ((int) j->pgid < 0){
 				// printf("Updating the job_array!\n");
 				 j->pgid = getpid();
@@ -333,7 +335,7 @@ void spawn_job(job_t *j, bool fg) {
 	}
 
 	if(fg) {
-		wait_for_job (j);
+		//wait_for_job (j);
 		/* Wait for the job to complete */
 		put_job_in_foreground (j, 0);
 	}
@@ -657,11 +659,11 @@ void eval(job_t *j){
 void put_job_in_foreground (job_t *j, int cont) {
        /* Put the job into the foreground.  */
        tcsetpgrp (shell_terminal, j->pgid);
+       tcsetattr (shell_terminal, TCSADRAIN, &j->tmodes);
      
        /* Send the job a 
        	continue signal, if necessary.  */
        if (cont) {
-           tcsetattr (shell_terminal, TCSADRAIN, &j->tmodes);
            continue_job(j);
        }
      
@@ -679,9 +681,8 @@ void put_job_in_foreground (job_t *j, int cont) {
      
 void put_job_in_background (job_t *j, int cont) {
        /* Send the job a continue signal, if necessary.  */
-       if (cont)
-         if (kill (-j->pgid, SIGCONT) < 0)
-           perror ("kill (SIGCONT)");
+       if (cont) continue_job;
+
 }
 
 void change_directory (job_t *j, int cont) {
@@ -787,7 +788,7 @@ int main() {
 						// printf("The value of jobs array at res: %d\n", job_array[res]);
 						printf("The pid_t p: %d\n", p);
 						
-						job_t* j = find_job(job_array[1]);
+						job_t* j = find_job(job_array[res]);
 						printf("%s\n", j->commandinfo);
 						if(!j){
 							perror("wrong job number");
