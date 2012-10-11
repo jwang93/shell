@@ -11,6 +11,7 @@
 
 #define MAX_ARGS 20 /* Maximum number of arguments to any command */
 
+#define ERRFILE "dsh.log"
 /*file descriptors for input and output; the range of fds are from 0 to 1023;
  * 0, 1, 2 are reserved for stdin, stdout, stderr */
 #define INPUT_FD  1000

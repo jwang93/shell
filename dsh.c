@@ -49,8 +49,10 @@ int find_lowest_index(){
 void remove_and_free(job_t *j){
 	job_t * prev = find_prev_job(j);
 	if(!prev){ //must be first job
-		if(first_job != j)
+		if(first_job != j){
 			perror("wrong pgid");
+			exit(1);
+		}
 		job_t * tmp = first_job;
 		if (first_job->next) first_job = first_job->next;
 		free_job(tmp);
@@ -619,41 +621,7 @@ char* promptmsg() {
         return both;
 }
 
-void eval(job_t *j){
-	pid_t pid;
 
-	if(!j) return;
-
-    signal (SIGINT, SIG_DFL);
-    signal (SIGQUIT, SIG_DFL);
-    signal (SIGTSTP, SIG_DFL);
-   	signal (SIGTTIN, SIG_DFL);
-    signal (SIGTTOU, SIG_DFL);
-    signal (SIGCHLD, SIG_DFL);
-
-	pid = fork();
-	if(pid==0){
-			process_t * process = j->first_process;
-			int i;
-			for(i=0; i<process->argc;i++) printf("%s\n", process->argv[i]);
-		if((execve(process->argv[0], process->argv, NULL)) <0) perror("execv failed");			
-		exit(1);
-	}
-	else if(pid>0){
-		int status;
-		if( waitpid(pid, &status, 0) <0){
-			perror("waitpid()");
-       		exit(EXIT_FAILURE);
-		}
-			
-	} else{
-		/* The fork failed.  */
-        perror ("fork");
-        exit (1);
-	}
-	
-	return;    
-}
 
 void put_job_in_foreground (job_t *j, int cont) {
 
@@ -676,13 +644,17 @@ void put_job_in_foreground (job_t *j, int cont) {
 void put_job_in_background (job_t *j, int cont) {
        /* Send the job a continue signal, if necessary.  */
        if (cont)
-         if (kill (-j->pgid, SIGCONT) < 0)
+         if (kill (-j->pgid, SIGCONT) < 0){
            perror ("kill (SIGCONT)");
+           	exit(1);
+          }
 }
 
 void change_directory (job_t *j, int cont) {
-     if(chdir(j->first_process->argv[1])<0)
+     if(chdir(j->first_process->argv[1])<0){
      	perror("chdir error");
+     	exit(1);
+     }
  }
 
 
@@ -723,13 +695,15 @@ void list_jobs (job_t *j, int cont) {
 }
 
 int main() {
-
+	int errfile =open(ERRFILE, O_APPEND | O_CREAT | O_WRONLY, 0666);
+	dup2(errfile, 2);
 	init_shell();
 	job_array = (pid_t *) malloc(20*sizeof(pid_t));
 	while(1) {
 		if(!readcmdline(promptmsg())) {
 			if (feof(stdin)) { /* End of file (ctrl-d) */
 				fflush(stdout);
+				close(errfile);
 				printf("\n");
 				exit(EXIT_SUCCESS);
              	}

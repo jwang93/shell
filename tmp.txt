@@ -1,12 +1,1 @@
-Bugs.txt
-GamePlan.txt
-Makefile
-cps210_lab1b.pdf
-direct
-dsh
-dsh-refactor.c
-dsh-tmp.c
-dsh.c
-dsh.h
-dsh.log
-tmp.txt
+      12      12     114
